@@ -13,7 +13,7 @@ import java.util.List;
 import java.util.Optional;
 
 @RestController
-@RequestMapping("/api/v1/user") // Change base URL to be more descriptive
+@RequestMapping("/api/v1/users") // Change base URL to be more descriptive
 @RequiredArgsConstructor // Use constructor injection for better testability
 public class UserController {
 
