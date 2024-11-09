@@ -22,4 +22,7 @@ public class OrderDetails {
     private String productId;
     private Integer quantity;
     private Double price;
+
+   //changes
+    private Double cost;
 }

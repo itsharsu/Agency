@@ -1,6 +1,8 @@
-package com.example.Agency.dto;
+package com.example.Agency.dto.reuests;
 
 
+import com.example.Agency.dto.OrderDetailDto;
+import com.example.Agency.dto.OrderDto;
 import lombok.Data;
 
 import java.util.List;

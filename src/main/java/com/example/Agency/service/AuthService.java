@@ -27,7 +27,7 @@ public class AuthService {
         User createdUser = userRepository.save(user);
 
         // Generate JWT token
-        String token = jwtUtil.generateToken(createdUser.getUserId());
+        String token = jwtUtil.generateToken(createdUser.getMobileNumber());
 
         return new ApiResponse<>(true,"User Created",token,null);
     }

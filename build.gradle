@@ -44,7 +44,8 @@ dependencies {
 	implementation 'org.springframework.boot:spring-boot-starter-security'
 	implementation "org.springframework.security:spring-security-config"
 	testImplementation 'org.springframework.security:spring-security-test'
-
+	//for CSV file
+	implementation 'org.apache.poi:poi-ooxml:5.2.3'
 }
 
 tasks.named('test') {

@@ -1,4 +1,4 @@
-package com.example.Agency.dto;
+package com.example.Agency.dto.reuests;
 
 import lombok.AllArgsConstructor;
 import lombok.Data;

@@ -72,7 +72,7 @@ public class ProductController {
 
     @DeleteMapping("/{productId}")
     @PreAuthorize("hasRole('ADMIN')")  // Restrict to ADMIN role
-    public ResponseEntity<ApiResponse<String>> deleteUser(@PathVariable String productId) {
+    public ResponseEntity<ApiResponse<String>> deleteProduct(@PathVariable String productId) {
         ApiResponse<String> response = productService.deleteByProductId(productId);
         return response.isSuccess()
                 ? ResponseEntity.ok(response) // 200 OK

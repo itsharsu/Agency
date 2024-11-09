@@ -22,4 +22,5 @@ public class Orders{
     private LocalTime orderTime;
     private Double totalAmount;
     private Boolean orderShift;
+    private Double costAmount;
 }

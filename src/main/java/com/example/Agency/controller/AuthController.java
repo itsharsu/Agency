@@ -1,7 +1,7 @@
 package com.example.Agency.controller;
 
 import com.example.Agency.dto.ApiResponse;
-import com.example.Agency.dto.LoginRequest;
+import com.example.Agency.dto.reuests.LoginRequest;
 import com.example.Agency.model.User;
 import com.example.Agency.service.AuthService;
 import jakarta.validation.Valid;

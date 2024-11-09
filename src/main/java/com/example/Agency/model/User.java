@@ -21,7 +21,8 @@ public class User {
     private String shopName;
     private String address;
     private String mobileNumber;
-    private String passwordHash;  // Hashed password
+    private String passwordHash;// Hashed password
+    private Double dueAmount = 0.0;
 
     @Enumerated(EnumType.STRING)
     @Column(name = "role", nullable = false)

@@ -4,6 +4,7 @@ import com.example.Agency.domain.ProductStatus;
 import com.example.Agency.dto.ApiResponse;
 import com.example.Agency.model.Product;
 import com.example.Agency.repository.ProductRepository;
+import lombok.AllArgsConstructor;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -15,19 +16,24 @@ import java.util.List;
 import java.util.UUID;
 
 @Service
-
+@AllArgsConstructor
 public class ProductService {
 
-    @Autowired
-    private ProductRepository productRepository;
+
+    private final ProductRepository productRepository;
+
 
     private final String IMAGE_DIR = "D:\\Agency Project\\Agency\\Agency\\src\\main\\resources\\images\\";
+    private static final String IMAGE_BASE_URL = "http://localhost:8080/images/";
 
     public ApiResponse<Product> saveProduct(String productName, double unitPrice, double originalPrice, ProductStatus status, MultipartFile file) {
+        // Generate a unique filename
         String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+
+        // Ensure the image directory exists
         File dir = new File(IMAGE_DIR);
         if (!dir.exists()) {
-            dir.mkdirs();  // Create the directory if it does not exist
+            dir.mkdirs();
         }
 
         // Define the complete path where the image will be stored
@@ -36,21 +42,24 @@ public class ProductService {
             // Save the uploaded file to the defined path
             file.transferTo(path);
 
-            // Create a new Product object
+            // Construct the public URL for the stored image
+            String imageUrl = IMAGE_BASE_URL + fileName;
+
+            // Create and set up a new Product object
             Product product = new Product();
             product.setProductId(UUID.randomUUID().toString());
             product.setProductName(productName);
             product.setUnitPrice(unitPrice);
             product.setOriginalPrice(originalPrice);
             product.setStatus(status);
-            product.setProductImage(path.toString());  // Save the file path
+            product.setProductImage(imageUrl);  // Save the URL instead of the file path
 
             // Save the product in the database
             Product savedProduct = productRepository.save(product);
 
-            return new ApiResponse<>(true,"Product saved successfully!", savedProduct,null);
-        }catch (IOException e) {
-            return new ApiResponse<>(false,"Failed to save product image!", null,e.getMessage());
+            return new ApiResponse<>(true, "Product saved successfully!", savedProduct, null);
+        } catch (IOException e) {
+            return new ApiResponse<>(false, "Failed to save product image!", null, e.getMessage());
         }
     }
 

@@ -12,4 +12,7 @@ public class OrderDetailDto {
     private Integer quantity;
     private Double price;
     private Double subtotal;
+    //changes
+    private Double cost;
+    private Double costSubtotal;
 }
