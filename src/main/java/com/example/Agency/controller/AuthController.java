@@ -1,6 +1,7 @@
 package com.example.Agency.controller;
 
 import com.example.Agency.dto.ApiResponse;
+import com.example.Agency.dto.response.LoginResponse;
 import com.example.Agency.dto.reuests.LoginRequest;
 import com.example.Agency.model.User;
 import com.example.Agency.service.AuthService;
@@ -23,14 +24,14 @@ public class AuthController {
 
 
     @PostMapping("auth/register")
-    public ResponseEntity<ApiResponse<String>> RegisterUser(@Valid @RequestBody User user) {
-        ApiResponse<String> response = authService.createUser(user);
+    public ResponseEntity<ApiResponse<LoginResponse>> registerUser(@Valid @RequestBody User user) {
+        ApiResponse<LoginResponse> response = authService.createUser(user);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("auth/login")
-    public ResponseEntity<ApiResponse<String>> login(@RequestBody LoginRequest loginRequest) {
-        ApiResponse<String> response = authService.login(loginRequest.getMobileNumber(), loginRequest.getPassword());
+    public ResponseEntity<ApiResponse<LoginResponse>> login(@RequestBody LoginRequest loginRequest) {
+        ApiResponse<LoginResponse> response = authService.login(loginRequest.getMobileNumber(), loginRequest.getPassword());
         return ResponseEntity.ok(response);
     }
 

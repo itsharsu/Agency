@@ -11,272 +11,249 @@ import com.example.Agency.repository.ProductRepository;
 import com.example.Agency.repository.UserRepository;
 import jakarta.transaction.Transactional;
 import lombok.AllArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
-import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.*;
 import java.util.stream.Collectors;
 
+@Slf4j
 @Service
 @AllArgsConstructor
 public class OrderService {
 
-    private UserRepository userRepository;
-    private OrderRepository orderRepository;
-    private OrderDetailRepository orderDetailRepository;
-    private ProductRepository productRepository;
+    private final UserRepository userRepository;
+    private final OrderRepository orderRepository;
+    private final OrderDetailRepository orderDetailRepository;
+    private final ProductRepository productRepository;
 
-
+    /**
+     * Creates or updates an order based on the provided order and order detail DTOs.
+     * If an order exists for the given user, date, and shift, it is updated; otherwise, a new order is created.
+     *
+     * @param orderDTO         the order data transfer object
+     * @param orderDetailDTOs  the list of order detail DTOs
+     * @return an ApiResponse wrapping the created or updated order
+     */
     @Transactional
     public ApiResponse<Orders> createOrUpdateOrder(OrderDto orderDTO, List<OrderDetailDto> orderDetailDTOs) {
-        LocalTime currentTime = LocalTime.now();
-//        LocalDate currentDate = LocalDate.now();
+        final LocalTime currentTime = LocalTime.now();
 
-        // Enforce order shift time restrictions
-//        if (orderDTO.isOrderShift()) { // AM shift
-//            if (currentTime.isAfter(LocalTime.of(23, 0))) {
-//                throw new IllegalArgumentException("Orders in AM shift must be placed before 23:00.");
-//            }
-//        } else { // PM shift
-//            if (currentTime.isAfter(LocalTime.of(8, 30))) {
-//                throw new IllegalArgumentException("Orders in PM shift must be placed before 08:30.");
-//            }
-//        }
+        // Retrieve user; throw exception if not found.
+        final User user = userRepository.findById(orderDTO.getUserId())
+                .orElseThrow(() -> new RuntimeException("User with ID " + orderDTO.getUserId() + " not found"));
 
-        // Check if an order exists for this user on the current date and shift
-        Optional<Orders> existingOrderOpt = orderRepository.findByUserIdAndOrderDateAndOrderShift(
+        // Attempt to find an existing order by user, date, and shift.
+        final Optional<Orders> existingOrderOpt = orderRepository.findByUserUserIdAndOrderDateAndOrderShift(
                 orderDTO.getUserId(), orderDTO.getOrderDate(), orderDTO.isOrderShift()
         );
 
         Orders order;
         if (existingOrderOpt.isPresent()) {
-            // Update existing order
             order = existingOrderOpt.get();
         } else {
-            // Create a new order if no order exists for the current date and shift
+            // Create new order if not present.
             order = new Orders();
-            order.setOrderId(UUID.randomUUID().toString());
-            order.setUserId(orderDTO.getUserId());
+            order.setUser(user);
             order.setOrderDate(orderDTO.getOrderDate());
             order.setOrderTime(currentTime);
             order.setOrderShift(orderDTO.isOrderShift());
             order.setTotalAmount(0.0);
             order.setCostAmount(0.0);
-            order = orderRepository.save(order); // Save initial order to the database
+            order = orderRepository.save(order); // persist initial order
         }
 
-        // Retrieve products and calculate the total order amount
-        List<String> productIds = orderDetailDTOs.stream()
+        // Retrieve products referenced in the order details.
+        final List<String> productIds = orderDetailDTOs.stream()
                 .map(OrderDetailDto::getProductId)
                 .collect(Collectors.toList());
 
-        Map<String, Product> productMap = productRepository.findAllById(productIds).stream()
+        final Map<String, Product> productMap = productRepository.findAllById(productIds).stream()
                 .collect(Collectors.toMap(Product::getProductId, product -> product));
 
-        BigDecimal totalAmount = BigDecimal.valueOf(order.getTotalAmount() != null ? order.getTotalAmount() : 0);
-        //change
-        BigDecimal costAmount = BigDecimal.valueOf(order.getCostAmount() != null ? order.getCostAmount() : 0);
+        // Use Optional to handle possible null totals.
+        BigDecimal totalAmount = BigDecimal.valueOf(Optional.ofNullable(order.getTotalAmount()).orElse(0.0));
+        BigDecimal costAmount = BigDecimal.valueOf(Optional.ofNullable(order.getCostAmount()).orElse(0.0));
+        BigDecimal userDueAmount = BigDecimal.valueOf(Optional.ofNullable(user.getDueAmount()).orElse(0.0));
 
-        // Retrieve the user to update their due amount
-        User user = userRepository.findById(orderDTO.getUserId())
-                .orElseThrow(() -> new RuntimeException("User with ID " + orderDTO.getUserId() + " not found"));
-        BigDecimal userDueAmount = BigDecimal.valueOf(user.getDueAmount() != null ? user.getDueAmount() : 0);
-
+        // Process each order detail.
         for (OrderDetailDto detailDTO : orderDetailDTOs) {
-            Product product = productMap.get(detailDTO.getProductId());
+            final Product product = productMap.get(detailDTO.getProductId());
             if (product == null) {
                 throw new RuntimeException("Product with ID " + detailDTO.getProductId() + " not found");
             }
 
-            BigDecimal cost = BigDecimal.valueOf(product.getOriginalPrice());
-            BigDecimal price = BigDecimal.valueOf(product.getUnitPrice());
-            BigDecimal quantity = BigDecimal.valueOf(detailDTO.getQuantity());
-            BigDecimal subtotal = price.multiply(quantity);
-            BigDecimal costSubtotal = cost.multiply(quantity);
+            final BigDecimal cost = BigDecimal.valueOf(product.getOriginalPrice());
+            final BigDecimal price = BigDecimal.valueOf(product.getUnitPrice());
+            final BigDecimal quantity = BigDecimal.valueOf(detailDTO.getQuantity());
+            final BigDecimal subtotal = price.multiply(quantity);
+            final BigDecimal costSubtotal = cost.multiply(quantity);
 
-
-            Optional<OrderDetails> existingOrderDetail = orderDetailRepository.findByOrderIdAndProductId(order.getOrderId(), detailDTO.getProductId());
+            // Check if an OrderDetail already exists for this order and product.
+            final Optional<OrderDetails> existingOrderDetailOpt =
+                    orderDetailRepository.findByOrderOrderIdAndProductProductId(order.getOrderId(), detailDTO.getProductId());
 
             OrderDetails orderDetail;
-            if (existingOrderDetail.isPresent()) {
-                // Update existing order detail
-                orderDetail = existingOrderDetail.get();
-                orderDetail.setQuantity(orderDetail.getQuantity() + detailDTO.getQuantity());
+            if (existingOrderDetailOpt.isPresent()) {
+                // Update the existing order detail.
+                orderDetail = existingOrderDetailOpt.get();
+                final int newQuantity = orderDetail.getQuantity() + detailDTO.getQuantity();
+                orderDetail.setQuantity(newQuantity);
+                final BigDecimal newQuantityBD = BigDecimal.valueOf(newQuantity);
+                orderDetail.setSubtotal(price.multiply(newQuantityBD).doubleValue());
+                orderDetail.setCostSubtotal(cost.multiply(newQuantityBD).doubleValue());
             } else {
-                // Create new order detail
+                // Create a new order detail.
                 orderDetail = new OrderDetails();
-                orderDetail.setOrder_detail_Id(UUID.randomUUID().toString());
-                orderDetail.setOrderId(order.getOrderId());
-                orderDetail.setProductId(detailDTO.getProductId());
+                orderDetail.setOrder(order);
+                orderDetail.setProduct(product);
                 orderDetail.setQuantity(detailDTO.getQuantity());
                 orderDetail.setPrice(price.doubleValue());
                 orderDetail.setCost(cost.doubleValue());
+                orderDetail.setSubtotal(subtotal.doubleValue());
+                orderDetail.setCostSubtotal(costSubtotal.doubleValue());
             }
 
-            // Save each order detail
             orderDetailRepository.save(orderDetail);
 
-            // Update user's due amount
+            // Update totals.
             userDueAmount = userDueAmount.add(subtotal);
             totalAmount = totalAmount.add(subtotal);
             costAmount = costAmount.add(costSubtotal);
         }
 
-        // Update total amount for the order
+        // Update order totals and persist changes.
         order.setTotalAmount(totalAmount.doubleValue());
         order.setCostAmount(costAmount.doubleValue());
-        Orders createdOrUpdatedOrder = orderRepository.save(order);
+        final Orders createdOrUpdatedOrder = orderRepository.save(order);
 
-        // Update and save user's due amount
+        // Update user's due amount.
         user.setDueAmount(userDueAmount.doubleValue());
         userRepository.save(user);
 
-        // Return ApiResponse with the calculated estimated profit
+        log.info("Order created/updated successfully for user ID: {}", orderDTO.getUserId());
         return new ApiResponse<>(true, "Order created or updated successfully!", createdOrUpdatedOrder, null);
     }
 
+    /**
+     * Retrieves all orders along with associated product information.
+     *
+     * @return an ApiResponse containing the GetOrdersDto with all orders
+     */
+    @Transactional(Transactional.TxType.SUPPORTS)
     public ApiResponse<GetOrdersDto> getAllOrders() {
-        List<Object[]> results = orderRepository.findAllOrdersWithProductInfoNative();
-
-        List<UserOrderDto> orders = new ArrayList<>();
-        Map<String, UserOrderDto> orderMap = new HashMap<>();
-        BigDecimal grandTotal = BigDecimal.ZERO;// Initialize grand total as BigDecimal
-        BigDecimal costGrandTotal = BigDecimal.ZERO;
-
-
-        for (Object[] result : results) {
-            String orderId = (String) result[0];
-            String userId = (String) result[1];
-            String shopName = (String) result[2];
-            String orderDate = (String) result[3];
-            String orderTime = (String) result[4];
-            String productName = (String) result[5];
-            int quantity = ((Number) result[6]).intValue();
-
-            // Use BigDecimal for subtotal and totalAmount
-            BigDecimal subtotal = (BigDecimal) result[7];
-            BigDecimal costSubtotal = (BigDecimal) result[8];
-            BigDecimal totalAmount = (BigDecimal) result[9];
-            BigDecimal costAmount = (BigDecimal) result[10];
-
-            UserOrderDto order = orderMap.get(orderId);
-            if (order == null) {
-                // If the order is new, add it to the map and list
-                order = new UserOrderDto(orderId, userId, shopName, orderDate, orderTime, new ArrayList<>(), totalAmount, costAmount);
-                orderMap.put(orderId, order);
-                orders.add(order);
-
-                // Add totalAmount only the first time the order is processed
-                grandTotal = grandTotal.add(totalAmount);
-            }
-
-            // Add product details to the order
-            order.getProducts().add(new UserOrderDto.ProductInfoDto(productName, quantity, subtotal, costSubtotal));
-        }
-
-        // Convert grandTotal to double if necessary
-        double grandTotalDouble = grandTotal.doubleValue();
-        double costGrandTotalDouble = costGrandTotal.doubleValue();
-
-
-        // Create the DTO containing orders and grand total
-        GetOrdersDto responseDto = new GetOrdersDto(orders, grandTotalDouble, costGrandTotalDouble);
-
-        // Return as ApiResponse with the custom DTO
-        return new ApiResponse<>(true, "Orders retrieved successfully!", responseDto, null);
+        final List<Object[]> results = orderRepository.findAllOrdersWithProductInfoNative();
+        final GetOrdersDto ordersDto = convertResultsToGetOrdersDto(results);
+        return new ApiResponse<>(true, "Orders retrieved successfully!", ordersDto, null);
     }
 
-
+    /**
+     * Retrieves orders by retailer (user) ID.
+     *
+     * @param userId the retailer's user ID
+     * @return an ApiResponse containing the OrderResponseDto with order information
+     */
+    @Transactional(Transactional.TxType.SUPPORTS)
     public ApiResponse<OrderResponseDto> getOrdersByRetailerId(String userId) {
-        List<Object[]> orderData = orderRepository.findOrdersByUserId(userId);
+        final List<Object[]> orderData = orderRepository.findOrdersByUserId(userId);
 
-        List<UserOrderInfo> userOrderInfo = new ArrayList<>();
-        BigDecimal totalAmount = BigDecimal.ZERO; // Initialize totalAmount as BigDecimal
+        final List<UserOrderInfo> userOrderInfo = new ArrayList<>();
+        BigDecimal totalAmount = BigDecimal.ZERO;
         BigDecimal costAmount = BigDecimal.ZERO;
 
-        for (Object[] obj : orderData) {
-            UserOrderInfo dto = getUserOrderInfo(obj);
-
-            // Get the total amount only once
-            totalAmount = (BigDecimal) obj[9]; // totalAmount should be BigDecimal
-            costAmount = (BigDecimal) obj[10];
-
+        for (final Object[] obj : orderData) {
+            final UserOrderInfo dto = getUserOrderInfo(obj);
+            // Assuming these totals are consistent across rows; otherwise, consider accumulating.
+            totalAmount = BigDecimal.valueOf(((Number) obj[9]).doubleValue());
+            costAmount = BigDecimal.valueOf(((Number) obj[10]).doubleValue());
             userOrderInfo.add(dto);
         }
-        OrderResponseDto orderResponseDto = new OrderResponseDto(userOrderInfo, totalAmount.doubleValue(), costAmount.doubleValue());
-        // Convert totalAmount to double before returning if necessary
+        final OrderResponseDto orderResponseDto = new OrderResponseDto(userOrderInfo, totalAmount.doubleValue(), costAmount.doubleValue());
         return new ApiResponse<>(true, "Orders retrieved successfully!", orderResponseDto, null);
     }
 
-    private static UserOrderInfo getUserOrderInfo(Object[] obj) {
-        UserOrderInfo dto = new UserOrderInfo();
+    /**
+     * Retrieves orders filtered by date range or shift.
+     *
+     * @param orderDate the specific order date (as a String)
+     * @param shift     the shift indicator
+     * @param startDate the start date for filtering
+     * @param endDate   the end date for filtering
+     * @return an ApiResponse containing the GetOrdersDto with matching orders
+     */
+    @Transactional(Transactional.TxType.SUPPORTS)
+    public ApiResponse<GetOrdersDto> getAllOrdersByDateRangeOrShift(String orderDate, Boolean shift, String startDate, String endDate) {
+        final List<Object[]> results = orderRepository.findAllOrdersWithProductInfoByDateRangeOrShift(orderDate, shift, startDate, endDate);
+        final GetOrdersDto ordersDto = convertResultsToGetOrdersDto(results);
+        return new ApiResponse<>(true, "Orders retrieved successfully!", ordersDto, null);
+    }
+
+    /**
+     * Converts a list of raw result arrays to a GetOrdersDto.
+     *
+     * @param results the list of Object arrays from the native query
+     * @return a GetOrdersDto containing structured order data
+     */
+    private GetOrdersDto convertResultsToGetOrdersDto(final List<Object[]> results) {
+        final List<UserOrderDto> orders = new ArrayList<>();
+        final Map<String, UserOrderDto> orderMap = new HashMap<>();
+        BigDecimal grandTotal = BigDecimal.ZERO;
+        BigDecimal costGrandTotal = BigDecimal.ZERO;
+
+        for (final Object[] result : results) {
+            final String orderId = (String) result[0];
+            final String userId = (String) result[1];
+            final String shopName = (String) result[2];
+            final String orderDateResult = (String) result[3];
+            final String orderTime = (String) result[4];
+            final String productName = (String) result[5];
+            final int quantity = ((Number) result[6]).intValue();
+
+            final BigDecimal price = BigDecimal.valueOf(((Number) result[7]).doubleValue());
+            final BigDecimal cost = BigDecimal.valueOf(((Number) result[8]).doubleValue());
+            final BigDecimal subtotal = BigDecimal.valueOf(((Number) result[9]).doubleValue());
+            final BigDecimal costSubtotal = BigDecimal.valueOf(((Number) result[10]).doubleValue());
+            final BigDecimal totalAmount = BigDecimal.valueOf(((Number) result[11]).doubleValue());
+            final BigDecimal costAmount = BigDecimal.valueOf(((Number) result[12]).doubleValue());
+
+            UserOrderDto order = orderMap.get(orderId);
+            if (order == null) {
+                order = new UserOrderDto(orderId, userId, shopName, orderDateResult, orderTime, new ArrayList<>(), totalAmount, costAmount);
+                orderMap.put(orderId, order);
+                orders.add(order);
+
+                grandTotal = grandTotal.add(totalAmount);
+                costGrandTotal = costGrandTotal.add(costAmount);
+            }
+
+            order.getProducts().add(new UserOrderDto.ProductInfoDto(productName, quantity, price, cost, subtotal, costSubtotal));
+        }
+
+        return new GetOrdersDto(orders, grandTotal.doubleValue(), costGrandTotal.doubleValue());
+    }
+
+    /**
+     * Helper method to extract UserOrderInfo from a raw result array.
+     *
+     * @param obj the raw result array
+     * @return a UserOrderInfo DTO populated with data from the array
+     */
+    private static UserOrderInfo getUserOrderInfo(final Object[] obj) {
+        final UserOrderInfo dto = new UserOrderInfo();
         dto.setOrderId((String) obj[0]);
         dto.setUserId((String) obj[1]);
         dto.setShopName((String) obj[2]);
         dto.setOrderDate((String) obj[3]);
         dto.setOrderTime((String) obj[4]);
         dto.setProductName((String) obj[5]);
-        dto.setQuantity((Integer) obj[6]);
+        dto.setQuantity(((Number) obj[6]).intValue());
 
-        // Use BigDecimal for subtotal
-        BigDecimal subtotal = (BigDecimal) obj[7];
-        BigDecimal costSubtotal = (BigDecimal) obj[8];
-        dto.setSubtotal(subtotal.doubleValue());// Convert to double for setting in DTO
+        final BigDecimal subtotal = BigDecimal.valueOf(((Number) obj[7]).doubleValue());
+        final BigDecimal costSubtotal = BigDecimal.valueOf(((Number) obj[8]).doubleValue());
+        dto.setSubtotal(subtotal.doubleValue());
         dto.setCostSubtotal(costSubtotal.doubleValue());
         return dto;
     }
-
-
-    public ApiResponse<GetOrdersDto> getAllOrdersByDateRangeOrShift(String orderDate, Boolean shift, String startDate, String endDate) {
-        List<Object[]> results = orderRepository.findAllOrdersWithProductInfoByDateRangeOrShift(orderDate, shift, startDate, endDate);
-
-        List<UserOrderDto> orders = new ArrayList<>();
-        Map<String, UserOrderDto> orderMap = new HashMap<>();
-        BigDecimal grandTotal = BigDecimal.ZERO; // Initialize grand total
-        BigDecimal costGrandTotal = BigDecimal.ZERO;
-
-        for (Object[] result : results) {
-            String orderId = (String) result[0];
-            String userId = (String) result[1];
-            String shopName = (String) result[2];
-            String orderDateResult = (String) result[3];
-            String orderTime = (String) result[4];
-            String productName = (String) result[5];
-            int quantity = ((Number) result[6]).intValue();
-
-            // Use BigDecimal for subtotal and totalAmount
-            BigDecimal subtotal = (BigDecimal) result[7];
-            BigDecimal costSubtotal = (BigDecimal) result[8];
-            BigDecimal totalAmount = (BigDecimal) result[9];
-            BigDecimal costAmount = (BigDecimal) result[10];
-
-            UserOrderDto order = orderMap.get(orderId);
-            if (order == null) {
-                // If the order is new, add it to the map and list
-                order = new UserOrderDto(orderId, userId, shopName, orderDateResult, orderTime, new ArrayList<>(), totalAmount, costAmount);
-                orderMap.put(orderId, order);
-                orders.add(order);
-
-                // Add totalAmount only the first time the order is processed
-                grandTotal = grandTotal.add(totalAmount);
-                costGrandTotal = costGrandTotal.add(costAmount);
-            }
-
-            // Add product details to the order
-            order.getProducts().add(new UserOrderDto.ProductInfoDto(productName, quantity, subtotal, costSubtotal));
-        }
-
-        // Convert grandTotal to double if necessary
-        double grandTotalDouble = grandTotal.doubleValue();
-        double costGrantTotalDouble = costGrandTotal.doubleValue();
-
-        // Create the DTO containing orders and grand total
-        GetOrdersDto responseDto = new GetOrdersDto(orders, grandTotalDouble, costGrantTotalDouble);
-
-        // Return as ApiResponse with the custom DTO
-        return new ApiResponse<>(true, "Orders retrieved successfully!", responseDto, null);
-    }
-
 }

@@ -9,8 +9,8 @@ import java.util.function.Function;
 @Component
 public class JwtUtil {
 
-    private String secretKey = "ga+bZU1ukkP7lTWFFJdxGJ7zr6kc7c6/NIts+jrwJlw=\n"; // Use a strong secret key
-    private long validityInMilliseconds = Long.MAX_VALUE; // No expiration
+    private final String secretKey = "ga+bZU1ukkP7lTWFFJdxGJ7zr6kc7c6/NIts+jrwJlw=\n"; // Use a strong secret key
+    private final long validityInMilliseconds = Long.MAX_VALUE; // No expiration
 
     public String generateToken(String mobileNumber) {
         return Jwts.builder()

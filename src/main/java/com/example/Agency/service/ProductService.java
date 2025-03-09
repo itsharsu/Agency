@@ -2,48 +2,60 @@ package com.example.Agency.service;
 
 import com.example.Agency.domain.ProductStatus;
 import com.example.Agency.dto.ApiResponse;
+import com.example.Agency.exception.FileStorageException;
+import com.example.Agency.exception.ProductNotFoundException;
 import com.example.Agency.model.Product;
 import com.example.Agency.repository.ProductRepository;
-import lombok.AllArgsConstructor;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.File;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.List;
 import java.util.UUID;
 
 @Service
-@AllArgsConstructor
+@RequiredArgsConstructor
 public class ProductService {
 
+    private static final Logger logger = LoggerFactory.getLogger(ProductService.class);
 
     private final ProductRepository productRepository;
 
+    @Value("${app.image-dir}")
+    private String imageDir;
 
-    private final String IMAGE_DIR = "D:\\Agency Project\\Agency\\Agency\\src\\main\\resources\\images\\";
-    private static final String IMAGE_BASE_URL = "http://localhost:8080/images/";
+    @Value("${app.image-base-url}")
+    private String imageBaseUrl;
 
-    public ApiResponse<Product> saveProduct(String productName, double unitPrice, double originalPrice, ProductStatus status, MultipartFile file) {
-        // Generate a unique filename
-        String fileName = UUID.randomUUID() + "_" + file.getOriginalFilename();
+    @Transactional
+    public ApiResponse<Product> saveProduct(String productName, double unitPrice, double originalPrice,
+                                            ProductStatus status, MultipartFile file) {
+        // Generate a unique filename and sanitize it
+        String fileName = UUID.randomUUID() + "_" + sanitizeFilename(file.getOriginalFilename());
 
         // Ensure the image directory exists
-        File dir = new File(IMAGE_DIR);
-        if (!dir.exists()) {
-            dir.mkdirs();
+        try {
+            Files.createDirectories(Paths.get(imageDir));
+        } catch (IOException e) {
+            logger.error("Could not create image directory: {}", e.getMessage());
+            throw new FileStorageException("Could not create image directory", e);
         }
 
         // Define the complete path where the image will be stored
-        java.nio.file.Path path = Paths.get(IMAGE_DIR + fileName);
+        Path path = Paths.get(imageDir, fileName);
         try {
             // Save the uploaded file to the defined path
-            file.transferTo(path);
-
+            file.transferTo(path.toFile());
             // Construct the public URL for the stored image
-            String imageUrl = IMAGE_BASE_URL + fileName;
+            String imageUrl = imageBaseUrl + fileName;
 
             // Create and set up a new Product object
             Product product = new Product();
@@ -52,74 +64,85 @@ public class ProductService {
             product.setUnitPrice(unitPrice);
             product.setOriginalPrice(originalPrice);
             product.setStatus(status);
-            product.setProductImage(imageUrl);  // Save the URL instead of the file path
+            product.setProductImage(imageUrl);  // Store the public URL
 
             // Save the product in the database
             Product savedProduct = productRepository.save(product);
-
             return new ApiResponse<>(true, "Product saved successfully!", savedProduct, null);
         } catch (IOException e) {
-            return new ApiResponse<>(false, "Failed to save product image!", null, e.getMessage());
+            logger.error("Failed to save product image: {}", e.getMessage());
+            throw new FileStorageException("Failed to save product image", e);
         }
     }
 
-    public ApiResponse<Product> updateProduct(String productId, String productName, double unitPrice, double originalPrice, ProductStatus status, MultipartFile productImage) {
+    @Transactional
+    public ApiResponse<Product> updateProduct(String productId, String productName, double unitPrice,
+                                              double originalPrice, ProductStatus status,
+                                              MultipartFile productImage) {
         Product existingProduct = productRepository.findById(productId)
-                .orElseThrow(() -> new RuntimeException("Product not found"));
+                .orElseThrow(() -> new ProductNotFoundException("Product not found with ID: " + productId));
 
-
-        File dir = new File(IMAGE_DIR);
-        if (!dir.exists()) {
-            dir.mkdirs();  // Create the directory if it does not exist
-        }
-
+        // Update basic product details
         existingProduct.setProductName(productName);
         existingProduct.setUnitPrice(unitPrice);
         existingProduct.setOriginalPrice(originalPrice);
         existingProduct.setStatus(status);
 
+        // Handle image update if a new file is provided
         if (productImage != null && !productImage.isEmpty()) {
-            // Save the new image
             try {
-                String imagePath = IMAGE_DIR + productImage.getOriginalFilename();
-                productImage.transferTo(new File(imagePath));
-                existingProduct.setProductImage(imagePath);
+                String fileName = UUID.randomUUID() + "_" + sanitizeFilename(productImage.getOriginalFilename());
+                Path imagePath = Paths.get(imageDir, fileName);
+                Files.createDirectories(imagePath.getParent());
+                productImage.transferTo(imagePath.toFile());
+                // Set the public URL for the stored image
+                existingProduct.setProductImage(imageBaseUrl + fileName);
             } catch (IOException e) {
-                throw new RuntimeException("Failed to save image: " + e.getMessage());
+                logger.error("Failed to update product image for productId {}: {}", productId, e.getMessage());
+                throw new FileStorageException("Failed to update product image", e);
             }
         }
 
         Product updatedProduct = productRepository.save(existingProduct);
-        return new ApiResponse<>(true, "Product updated successfully", updatedProduct,null);
+        return new ApiResponse<>(true, "Product updated successfully", updatedProduct, null);
     }
 
-    public ApiResponse<List<Product>> getAllProducts(){
+    @Transactional(readOnly = true)
+    public ApiResponse<List<Product>> getAllProducts() {
         List<Product> products = productRepository.findAll();
-        return new ApiResponse<>(true,"products are retrived succesfully!",products,null);
+        return new ApiResponse<>(true, "Products retrieved successfully!", products, null);
     }
 
-    public ApiResponse<?> getAvailableProducts(){
+    @Transactional(readOnly = true)
+    public ApiResponse<List<Product>> getAvailableProducts() {
         List<Product> products = productRepository.findByStatus(ProductStatus.AVAILABLE);
-        if(products.isEmpty()){
-            return new ApiResponse<>(true,"List is empty",products,null);
+        if (products.isEmpty()) {
+            return new ApiResponse<>(true, "No available products found", products, null);
         }
-        return new ApiResponse<>(true,"List of available products",products,null);
+        return new ApiResponse<>(true, "List of available products", products, null);
     }
 
-    public ApiResponse<?> getUnavailableProducts(){
+    @Transactional(readOnly = true)
+    public ApiResponse<List<Product>> getUnavailableProducts() {
         List<Product> products = productRepository.findByStatus(ProductStatus.UNAVAILABLE);
-        if(products.isEmpty()){
-            return new ApiResponse<>(true,"List is empty",products,null);
+        if (products.isEmpty()) {
+            return new ApiResponse<>(true, "No unavailable products found", products, null);
         }
-        return new ApiResponse<>(true,"List of Unavailable products",products,null);
+        return new ApiResponse<>(true, "List of unavailable products", products, null);
     }
 
-    public ApiResponse<String> deleteByProductId(String productId){
+    @Transactional
+    public ApiResponse<String> deleteByProductId(String productId) {
         if (productRepository.existsById(productId)) {
-            productRepository.deleteById(productId); // Delete the user
-            return new ApiResponse<>(true, "Successfully Deleted!", null, null);
+            productRepository.deleteById(productId);
+            return new ApiResponse<>(true, "Product successfully deleted!", null, null);
         } else {
             return new ApiResponse<>(false, "Unable to delete: Product not found", null, null);
         }
+    }
+
+    // Utility method to sanitize file names to avoid security issues.
+    private String sanitizeFilename(String originalFilename) {
+        return originalFilename.replaceAll("[^a-zA-Z0-9\\.\\-]", "_");
     }
 }

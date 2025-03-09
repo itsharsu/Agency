@@ -3,20 +3,15 @@ package com.example.Agency.controller;
 import com.example.Agency.dto.*;
 import com.example.Agency.dto.reuests.CreateOrderRequest;
 import com.example.Agency.model.Orders;
-import com.example.Agency.service.ExcelGenerator;
 import com.example.Agency.service.OrderService;
 import lombok.AllArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.http.*;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
 
-import java.io.ByteArrayOutputStream;
-import java.io.IOException;
-import java.time.LocalDate;
 import java.util.List;
 
 import static org.springframework.http.ResponseEntity.status;
@@ -30,8 +25,6 @@ public class OrderController {
     @Autowired
     private OrderService orderService;
 
-    @Autowired
-    private ExcelGenerator excelGenerator;
 
     @PostMapping
     public ResponseEntity<ApiResponse<Orders>> createOrder(@RequestBody CreateOrderRequest request) {
@@ -68,5 +61,4 @@ public class OrderController {
 
         return orderService.getAllOrdersByDateRangeOrShift(date, shift, startDate, endDate);
     }
-
 }

@@ -23,22 +23,16 @@ public class UserOrderDto {
 
     @Data
     @NoArgsConstructor
+    @AllArgsConstructor
     public static class ProductInfoDto {
         private String productName;
         private int quantity;
-        private BigDecimal subtotal;
         private BigDecimal price;
         private BigDecimal cost;
-        private BigDecimal costAmount;
+        private BigDecimal subtotal;
+//      private BigDecimal costAmount;
         //changes
         private BigDecimal costSubtotal;
 
-
-        public ProductInfoDto(String productName, int quantity, BigDecimal subtotal, BigDecimal costSubtotal) {
-            this.productName = productName;
-            this.quantity = quantity;
-            this.subtotal = subtotal;
-            this.costSubtotal = costSubtotal;
-        }
     }
 }
