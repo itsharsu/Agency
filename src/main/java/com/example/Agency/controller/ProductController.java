@@ -52,7 +52,7 @@ public class ProductController {
 
 
     @GetMapping
-    @PreAuthorize("hasRole('ADMIN')")
+//    @PreAuthorize("hasRole('ADMIN')")
     public ResponseEntity<ApiResponse<?>> getAllProducts(){
         ApiResponse<?> products = productService.getAllProducts();
         return ResponseEntity.ok(products);
